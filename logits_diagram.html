@@ -9,17 +9,17 @@
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg: #0d0f14;
-    --surface: #151820;
-    --surface2: #1c2030;
-    --border: rgba(255,255,255,0.08);
-    --border2: rgba(255,255,255,0.14);
-    --text: #e8eaf0;
-    --text2: #8892aa;
-    --text3: #4a5268;
-    --accent: #6c6fff;
-    --accent2: #4ecca3;
-    --warn: #f0a060;
+    --bg: #ffffff;
+    --surface: #f8f7fc;
+    --surface2: #eeeaf8;
+    --border: rgba(160,130,210,0.15);
+    --border2: rgba(160,130,210,0.28);
+    --text: #2e2450;
+    --text2: #7a6fa0;
+    --text3: #7060a8;
+    --accent: #8b7fd4;
+    --accent2: #5bbfaa;
+    --warn: #e8956a;
     --mono: 'IBM Plex Mono', monospace;
     --sans: 'Pretendard', sans-serif;
   }
@@ -140,7 +140,7 @@
   }
   .bar-track {
     flex: 1;
-    background: rgba(255,255,255,0.04);
+    background: rgba(160,130,210,0.07);
     border-radius: 5px;
     height: 30px;
     position: relative;
@@ -157,7 +157,7 @@
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(90deg, transparent 60%, rgba(255,255,255,0.08));
+    background: linear-gradient(90deg, transparent 60%, rgba(255,255,255,0.35));
     border-radius: 4px;
   }
   .bar-num {
@@ -235,7 +235,7 @@
     margin-top: 10px;
     line-height: 1.6;
     padding: 10px 14px;
-    background: rgba(108,111,255,0.07);
+    background: rgba(139,127,212,0.07);
     border-left: 2px solid var(--accent);
     border-radius: 0 6px 6px 0;
   }
@@ -339,7 +339,7 @@
   .sample-btn:hover {
     border-color: var(--accent);
     color: var(--accent);
-    background: rgba(108,111,255,0.06);
+    background: rgba(139,127,212,0.07);
   }
   .sample-btn:active { transform: scale(0.97); }
 
@@ -433,12 +433,12 @@
   <button class="sample-btn" onclick="doSample()">다시 뽑기 ↺</button>
 </div>
 
-<footer>Ollama + LangChain 과정 · Day 01 · LLM 추론 시각화</footer>
+<footer>IBM 양자 아키텍처 기반의 sLM 모델 개발자 과정</footer>
 
 <script>
   const tokens  = ['고양이', '강아지', '새', '물고기', '토끼'];
   const logits  = [4.2, 2.8, 1.5, 0.3, -0.9];
-  const COLORS  = ['#6c6fff','#4ecca3','#f0a060','#e06090','#8892aa'];
+  const COLORS  = ['#8b7fd4','#5bbfaa','#e8956a','#d4709a','#9aabbf'];
 
   const minL = Math.min(...logits);
   const maxL = Math.max(...logits);
