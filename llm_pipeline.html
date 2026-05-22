@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM 추론 파이프라인</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Pretendard:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d0f14;
+  --surface:#151820;
+  --surface2:#1c2030;
+  --border:rgba(255,255,255,0.08);
+  --border2:rgba(255,255,255,0.15);
+  --text:#e8eaf0;
+  --text2:#8892aa;
+  --text3:#3e4560;
+  --purple:#7f77dd;
+  --purple-bg:rgba(127,119,221,0.12);
+  --teal:#4ecca3;
+  --teal-bg:rgba(78,204,163,0.12);
+  --amber:#f0a060;
+  --amber-bg:rgba(240,160,96,0.12);
+  --gray-node:#1c2030;
+  --mono:'IBM Plex Mono',monospace;
+  --sans:'Pretendard',sans-serif;
+}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--sans);
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:48px 24px 72px;
+}
+
+/* header */
+header{width:100%;max-width:640px;margin-bottom:40px;text-align:center}
+.tag{display:inline-block;font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--teal);border:1px solid var(--teal);border-radius:4px;padding:3px 10px;margin-bottom:14px;opacity:.8}
+h1{font-size:clamp(20px,3.5vw,28px);font-weight:600;letter-spacing:-.02em;margin-bottom:8px}
+h1 span{color:var(--purple)}
+.subtitle{font-size:13px;color:var(--text2);line-height:1.7}
+
+/* pipeline wrapper */
+.pipeline{
+  width:100%;
+  max-width:640px;
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:0;
+}
+
+/* step row */
+.step{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:100%;
+  position:relative;
+  padding:0 60px;
+  min-height:80px;
+}
+.step-num{
+  position:absolute;
+  left:0;
+  top:50%;
+  transform:translateY(-50%);
+  width:28px;
+  height:28px;
+  border:1px solid var(--text3);
+  border-radius:50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-family:var(--mono);
+  font-size:11px;
+  color:var(--text3);
+}
+
+/* data node (gray box) */
+.node-data{
+  background:var(--surface2);
+  border:1px solid var(--border2);
+  border-radius:12px;
+  padding:12px 24px;
+  text-align:center;
+  min-width:180px;
+  cursor:pointer;
+  transition:border-color .2s, background .2s;
+  position:relative;
+  z-index:2;
+}
+.node-data:hover{border-color:var(--purple);background:#1e2235}
+.node-data .node-title{font-size:15px;font-weight:500;letter-spacing:-.01em;margin-bottom:3px}
+.node-data .node-sub{font-family:var(--mono);font-size:11px;color:var(--text2)}
+
+/* op node (pill) */
+.node-op{
+  border-radius:999px;
+  padding:9px 20px;
+  font-size:13px;
+  font-weight:500;
+  cursor:pointer;
+  transition:opacity .2s, transform .2s;
+  white-space:nowrap;
+  position:relative;
+  z-index:2;
+}
+.node-op:hover{opacity:.85;transform:scale(1.03)}
+.node-op.purple{background:var(--purple-bg);border:1px solid var(--purple);color:var(--purple)}
+.node-op.teal{background:var(--teal-bg);border:1px solid var(--teal);color:var(--teal)}
+.node-op.amber{background:var(--amber-bg);border:1px solid var(--amber);color:var(--amber)}
+
+/* final node */
+.node-final{
+  background:var(--teal-bg);
+  border:1px solid var(--teal);
+  border-radius:12px;
+  padding:14px 32px;
+  text-align:center;
+  font-size:16px;
+  font-weight:600;
+  color:var(--teal);
+  letter-spacing:-.01em;
+  cursor:pointer;
+  transition:opacity .2s;
+}
+.node-final:hover{opacity:.85}
+
+/* connector lines */
+.connector{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  height:36px;
+  position:relative;
+  width:100%;
+}
+.connector::before{
+  content:'';
+  position:absolute;
+  left:50%;
+  transform:translateX(-50%);
+  width:1.5px;
+  top:0;
+  bottom:0;
+  background:var(--text3);
+}
+.connector .arrow{
+  position:absolute;
+  bottom:2px;
+  left:50%;
+  transform:translateX(-50%);
+  width:0;
+  height:0;
+  border-left:5px solid transparent;
+  border-right:5px solid transparent;
+  border-top:6px solid var(--text3);
+}
+
+/* side connector */
+.side-step{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:100%;
+  padding:0 60px;
+  position:relative;
+  min-height:80px;
+}
+.side-connector{
+  position:absolute;
+  display:flex;
+  align-items:center;
+}
+/* horizontal dashed line from side op to main node */
+.h-line{
+  height:1.5px;
+  background:transparent;
+  border-top:1.5px dashed var(--text3);
+  flex:1;
+}
+.h-line-solid{
+  height:1.5px;
+  background:var(--text3);
+  flex:1;
+}
+.arrow-right{
+  width:0;height:0;
+  border-top:5px solid transparent;
+  border-bottom:5px solid transparent;
+  border-left:6px solid var(--text3);
+}
+
+/* auto-regressive loop */
+.loop-wrap{
+  position:absolute;
+  right:-10px;
+  top:0;
+  bottom:0;
+  width:60px;
+  pointer-events:none;
+}
+.loop-label{
+  position:absolute;
+  right:0;
+  top:50%;
+  transform:translateY(-50%);
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--text3);
+  text-align:right;
+  line-height:1.4;
+  white-space:nowrap;
+}
+
+/* tooltip popup */
+.tooltip{
+  display:none;
+  position:fixed;
+  z-index:100;
+  background:#1a1e2e;
+  border:1px solid var(--border2);
+  border-radius:10px;
+  padding:12px 16px;
+  max-width:260px;
+  font-size:12px;
+  color:var(--text2);
+  line-height:1.6;
+  box-shadow:0 8px 32px rgba(0,0,0,0.5);
+  pointer-events:none;
+}
+.tooltip.show{display:block}
+.tooltip strong{color:var(--text);display:block;margin-bottom:4px;font-size:13px}
+
+/* footer */
+footer{
+  width:100%;
+  max-width:640px;
+  text-align:center;
+  font-family:var(--mono);
+  font-size:11px;
+  color:var(--text3);
+  margin-top:32px;
+  border-top:1px solid var(--border);
+  padding-top:20px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="tag">LLM 추론 파이프라인</div>
+  <h1>입력 텍스트 → <span>최종 출력</span></h1>
+  <p class="subtitle">각 단계를 클릭하면 설명을 볼 수 있습니다</p>
+</header>
+
+<div class="pipeline">
+
+  <!-- ① 입력 텍스트 + Tokenizer → Token IDs -->
+  <div class="step">
+    <div class="step-num">①</div>
+    <!-- left: 입력 텍스트 -->
+    <div style="display:flex;align-items:center;gap:12px;width:100%;justify-content:center">
+      <div class="node-data" data-tip="input">
+        <div class="node-title">입력 텍스트</div>
+        <div class="node-sub">"파이썬이란?"</div>
+      </div>
+      <!-- arrow right -->
+      <div style="display:flex;align-items:center;gap:0;flex:0 0 auto">
+        <div style="width:18px;height:1.5px;background:var(--text3)"></div>
+        <div class="node-op purple" data-tip="tokenizer">Tokenizer</div>
+        <div style="width:8px;height:1.5px;background:var(--text3)"></div>
+        <div style="width:0;height:0;border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:6px solid var(--text3)"></div>
+      </div>
+      <div class="node-data" data-tip="tokenids">
+        <div class="node-title">Token IDs</div>
+        <div class="node-sub">[1234, 567, ...]</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <!-- ② 벡터 표현 + Embedding -->
+  <div class="step">
+    <div class="step-num">②</div>
+    <div style="display:flex;align-items:center;gap:12px;width:100%;justify-content:center">
+      <div class="node-data" data-tip="vector">
+        <div class="node-title">벡터 표현</div>
+        <div class="node-sub">[0.12, -0.43, ...]</div>
+      </div>
+      <!-- right side: Embedding comes from right -->
+      <div style="display:flex;align-items:center;gap:0;flex:0 0 auto">
+        <div style="width:8px;height:1.5px;background:var(--text3)"></div>
+        <div style="width:0;height:0;border-top:5px solid transparent;border-bottom:5px solid transparent;border-right:6px solid var(--text3)"></div>
+        <div class="node-op teal" style="margin-left:10px" data-tip="embedding">Embedding</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <!-- ③ Hidden States + Transformer -->
+  <div class="step">
+    <div class="step-num">③</div>
+    <div style="display:flex;align-items:center;gap:12px;width:100%;justify-content:center">
+      <div class="node-op purple" data-tip="transformer">Transformer Layers</div>
+      <div style="display:flex;align-items:center;gap:0;flex:0 0 auto">
+        <div style="width:8px;height:1.5px;background:var(--text3)"></div>
+        <div style="width:0;height:0;border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:6px solid var(--text3)"></div>
+      </div>
+      <div class="node-data" data-tip="hidden">
+        <div class="node-title">Hidden States</div>
+        <div class="node-sub">문맥 인코딩 완료</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector" style="position:relative">
+    <div class="arrow"></div>
+    <!-- auto-regressive loop arc (SVG) -->
+    <svg style="position:absolute;right:30px;top:-120px;pointer-events:none" width="70" height="280" overflow="visible">
+      <path d="M 10 120 Q 60 120 60 200 Q 60 270 10 270" fill="none" stroke="var(--text3)" stroke-width="1.5" stroke-dasharray="5 4"/>
+      <polygon points="10,264 5,276 15,276" fill="var(--text3)"/>
+      <text x="65" y="200" font-family="'IBM Plex Mono',monospace" font-size="10" fill="var(--text3)" text-anchor="start">반복</text>
+      <text x="65" y="213" font-family="'IBM Plex Mono',monospace" font-size="10" fill="var(--text3)" text-anchor="start">(auto-</text>
+      <text x="65" y="226" font-family="'IBM Plex Mono',monospace" font-size="10" fill="var(--text3)" text-anchor="start">regressive)</text>
+    </svg>
+  </div>
+
+  <!-- ④ Logits + LM Head -->
+  <div class="step">
+    <div class="step-num">④</div>
+    <div style="display:flex;align-items:center;gap:12px;width:100%;justify-content:center">
+      <div class="node-data" data-tip="logits">
+        <div class="node-title">Logits</div>
+        <div class="node-sub">어휘 확률 분포</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:0;flex:0 0 auto">
+        <div style="width:8px;height:1.5px;background:var(--text3)"></div>
+        <div style="width:0;height:0;border-top:5px solid transparent;border-bottom:5px solid transparent;border-right:6px solid var(--text3)"></div>
+        <div class="node-op teal" style="margin-left:10px" data-tip="lmhead">LM Head</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <!-- ⑤ 출력 토큰 + Sampling -->
+  <div class="step">
+    <div class="step-num">⑤</div>
+    <div style="display:flex;align-items:center;gap:12px;width:100%;justify-content:center">
+      <div class="node-op amber" data-tip="sampling">Sampling</div>
+      <div style="display:flex;align-items:center;gap:0;flex:0 0 auto">
+        <div style="width:8px;height:1.5px;background:var(--text3)"></div>
+        <div style="width:0;height:0;border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:6px solid var(--text3)"></div>
+      </div>
+      <div class="node-data" data-tip="output">
+        <div class="node-title">출력 토큰</div>
+        <div class="node-sub">다음 토큰 선택</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><div class="arrow"></div></div>
+
+  <!-- ⑥ 최종 텍스트 출력 -->
+  <div class="step" style="min-height:60px">
+    <div class="step-num">⑥</div>
+    <div class="node-final" data-tip="final">최종 텍스트 출력</div>
+  </div>
+
+</div>
+
+<footer>Ollama + LangChain 과정 · Day 01 · LLM 추론 파이프라인</footer>
+
+<!-- tooltip -->
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+const tips = {
+  input:       {title:'입력 텍스트', body:'사용자가 모델에 전달하는 원시 텍스트입니다. Tokenizer로 넘어가기 전 어떤 전처리도 이루어지지 않습니다.'},
+  tokenizer:   {title:'Tokenizer', body:'텍스트를 숫자 ID 시퀀스로 변환합니다. BPE(Byte Pair Encoding) 방식이 주로 사용되며, 단어 단위가 아닌 서브워드 단위로 분리합니다.'},
+  tokenids:    {title:'Token IDs', body:'Tokenizer가 출력한 숫자 배열입니다. 각 숫자는 모델의 어휘 사전(vocabulary)에서 특정 서브워드에 대응합니다.'},
+  vector:      {title:'벡터 표현 (Embedding)', body:'각 Token ID를 고차원 실수 벡터(예: 4096차원)로 변환합니다. 의미적으로 유사한 단어는 가까운 벡터 공간에 위치합니다.'},
+  embedding:   {title:'Embedding Layer', body:'Token ID → 고차원 벡터 변환을 담당하는 레이어입니다. 학습을 통해 각 토큰의 의미를 벡터 공간에 인코딩합니다.'},
+  transformer: {title:'Transformer Layers', body:'Self-Attention + Feed-Forward Network를 반복하는 핵심 레이어 스택입니다. 각 레이어가 문맥을 점점 더 깊이 이해합니다. GPT-4는 96개 레이어를 사용합니다.'},
+  hidden:      {title:'Hidden States', body:'Transformer가 출력하는 문맥이 인코딩된 벡터입니다. 입력 텍스트 전체의 의미와 관계가 압축되어 있습니다.'},
+  logits:      {title:'Logits', body:'LM Head가 출력하는 어휘 전체에 대한 날것의 점수입니다. 아직 확률이 아닌 실수값이며, Softmax를 통해 확률로 변환됩니다.'},
+  lmhead:      {title:'LM Head', body:'Hidden States를 어휘 크기(예: 50,000)의 점수 벡터(Logits)로 변환하는 선형 레이어입니다. 다음에 올 토큰의 후보 점수를 계산합니다.'},
+  sampling:    {title:'Sampling', body:'Logits를 Softmax로 확률 분포로 변환한 뒤, Temperature/Top-k/Top-p 등의 전략으로 다음 토큰을 샘플링합니다.'},
+  output:      {title:'출력 토큰', body:'Sampling이 선택한 하나의 토큰입니다. 이 토큰은 다시 입력에 추가되어 다음 토큰 예측에 사용됩니다 (Auto-regressive).'},
+  final:       {title:'최종 텍스트 출력', body:'EOS(End-of-Sequence) 토큰이 생성되거나 최대 길이에 도달할 때까지 위 과정을 반복하여 완성된 텍스트를 출력합니다.'},
+};
+
+const tooltip = document.getElementById('tooltip');
+let hideTimer;
+
+document.querySelectorAll('[data-tip]').forEach(el => {
+  el.addEventListener('mouseenter', e => {
+    clearTimeout(hideTimer);
+    const key = el.dataset.tip;
+    const d = tips[key];
+    if (!d) return;
+    tooltip.innerHTML = `<strong>${d.title}</strong>${d.body}`;
+    tooltip.classList.add('show');
+    positionTooltip(e);
+  });
+  el.addEventListener('mousemove', positionTooltip);
+  el.addEventListener('mouseleave', () => {
+    hideTimer = setTimeout(() => tooltip.classList.remove('show'), 200);
+  });
+});
+
+function positionTooltip(e) {
+  const pad = 12;
+  let x = e.clientX + pad;
+  let y = e.clientY + pad;
+  const tw = 260, th = 120;
+  if (x + tw > window.innerWidth) x = e.clientX - tw - pad;
+  if (y + th > window.innerHeight) y = e.clientY - th - pad;
+  tooltip.style.left = x + 'px';
+  tooltip.style.top  = y + 'px';
+}
+</script>
+</body>
+</html>
