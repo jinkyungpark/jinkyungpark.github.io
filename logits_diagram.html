@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Logits → 확률 | LLM 추론 시각화</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Pretendard:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0f14;
+    --surface: #151820;
+    --surface2: #1c2030;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #e8eaf0;
+    --text2: #8892aa;
+    --text3: #4a5268;
+    --accent: #6c6fff;
+    --accent2: #4ecca3;
+    --warn: #f0a060;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'Pretendard', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 48px 24px 64px;
+  }
+
+  /* header */
+  header {
+    width: 100%;
+    max-width: 780px;
+    margin-bottom: 40px;
+  }
+  .tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: var(--accent2);
+    border: 1px solid var(--accent2);
+    border-radius: 4px;
+    padding: 3px 9px;
+    margin-bottom: 14px;
+    opacity: 0.85;
+  }
+  h1 {
+    font-size: clamp(22px, 4vw, 32px);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    margin-bottom: 10px;
+  }
+  h1 span { color: var(--accent); }
+  .subtitle {
+    font-size: 14px;
+    color: var(--text2);
+    line-height: 1.7;
+    max-width: 560px;
+  }
+
+  /* main card */
+  .card {
+    width: 100%;
+    max-width: 780px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    margin-bottom: 20px;
+  }
+
+  /* two-column layout */
+  .cols {
+    display: grid;
+    grid-template-columns: 1fr 48px 1fr;
+    gap: 0;
+    align-items: center;
+  }
+  .col-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--text3);
+    margin-bottom: 14px;
+    text-transform: uppercase;
+  }
+
+  /* arrow column */
+  .arrow-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding-top: 18px;
+  }
+  .arrow-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent);
+    text-align: center;
+    line-height: 1.4;
+  }
+  .arrow-icon {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--accent);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+    font-size: 14px;
+  }
+
+  /* bar rows */
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 9px;
+  }
+  .bar-token {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text2);
+    width: 58px;
+    text-align: right;
+    flex-shrink: 0;
+    letter-spacing: 0.02em;
+  }
+  .bar-track {
+    flex: 1;
+    background: rgba(255,255,255,0.04);
+    border-radius: 5px;
+    height: 30px;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.45s cubic-bezier(0.4,0,0.2,1);
+    position: relative;
+  }
+  .bar-fill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 60%, rgba(255,255,255,0.08));
+    border-radius: 4px;
+  }
+  .bar-num {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  /* temperature control */
+  .control-card {
+    width: 100%;
+    max-width: 780px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px 32px;
+    margin-bottom: 20px;
+  }
+  .control-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 16px;
+  }
+  .control-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--text3);
+    text-transform: uppercase;
+  }
+  .temp-value {
+    font-family: var(--mono);
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--accent);
+    transition: color 0.3s;
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: var(--surface2);
+    border-radius: 2px;
+    outline: none;
+    margin-bottom: 12px;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    background: var(--accent);
+    border-radius: 50%;
+    border: 2px solid var(--bg);
+    cursor: pointer;
+    transition: transform 0.15s;
+  }
+  input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+  .temp-desc {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text3);
+    font-family: var(--mono);
+  }
+  .temp-hint {
+    font-size: 12px;
+    color: var(--text2);
+    margin-top: 10px;
+    line-height: 1.6;
+    padding: 10px 14px;
+    background: rgba(108,111,255,0.07);
+    border-left: 2px solid var(--accent);
+    border-radius: 0 6px 6px 0;
+  }
+
+  /* formula */
+  .formula-card {
+    width: 100%;
+    max-width: 780px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px 32px;
+    margin-bottom: 20px;
+  }
+  .formula-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--text3);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .formula {
+    font-family: var(--mono);
+    font-size: 15px;
+    color: var(--accent2);
+    text-align: center;
+    padding: 18px;
+    background: var(--surface2);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    letter-spacing: 0.02em;
+    margin-bottom: 16px;
+  }
+  .formula sub { font-size: 11px; }
+  .formula-legend {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text2);
+  }
+  .legend-key { font-family: var(--mono); color: var(--accent2); }
+
+  /* sample result */
+  .sample-card {
+    width: 100%;
+    max-width: 780px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px 32px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .sample-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--text3);
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+  .sample-result {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .sample-token {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--text);
+    transition: color 0.3s;
+  }
+  .sample-prob {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text2);
+  }
+  .sample-btn {
+    background: transparent;
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    color: var(--text2);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 8px 18px;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  .sample-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(108,111,255,0.06);
+  }
+  .sample-btn:active { transform: scale(0.97); }
+
+  /* flash animation */
+  @keyframes flash {
+    0% { opacity: 0.3; }
+    100% { opacity: 1; }
+  }
+  .flash { animation: flash 0.35s ease-out; }
+
+  /* footer */
+  footer {
+    width: 100%;
+    max-width: 780px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text3);
+    font-family: var(--mono);
+    padding-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="tag">LLM 추론 파이프라인 · 세션 1</div>
+  <h1>Logits → <span>확률 분포</span></h1>
+  <p class="subtitle">
+    LM Head가 출력한 날것의 점수(logits)가 Softmax를 통해 어떻게 확률로 변환되는지,
+    그리고 Temperature가 분포를 어떻게 바꾸는지 직접 확인해 보세요.
+  </p>
+</header>
+
+<!-- main bars -->
+<div class="card">
+  <div class="cols">
+    <div class="col-left">
+      <div class="col-label">Logits (날것의 점수)</div>
+      <div id="logit-bars"></div>
+    </div>
+
+    <div class="arrow-col">
+      <div class="arrow-label">Soft<br>max</div>
+      <div class="arrow-icon">→</div>
+    </div>
+
+    <div class="col-right">
+      <div class="col-label">확률 분포</div>
+      <div id="prob-bars"></div>
+    </div>
+  </div>
+</div>
+
+<!-- temperature -->
+<div class="control-card">
+  <div class="control-header">
+    <span class="control-title">Temperature (T)</span>
+    <span class="temp-value" id="temp-display">1.0</span>
+  </div>
+  <input type="range" min="1" max="40" value="10" id="temp-slider" step="1">
+  <div class="temp-desc">
+    <span>0.1 — 결정적 (항상 최고 확률)</span>
+    <span>4.0 — 무작위 (거의 균등 분포)</span>
+  </div>
+  <div class="temp-hint" id="temp-hint">
+    T = 1.0 — 기본값. 모델의 학습된 확률을 그대로 사용합니다.
+  </div>
+</div>
+
+<!-- formula -->
+<div class="formula-card">
+  <div class="formula-title">Softmax 수식</div>
+  <div class="formula">
+    P(i) = exp(z<sub>i</sub> / T) &nbsp;/&nbsp; &Sigma;<sub>j</sub> exp(z<sub>j</sub> / T)
+  </div>
+  <div class="formula-legend">
+    <div class="legend-item"><span class="legend-key">z<sub>i</sub></span><span>i번째 토큰의 logit 값</span></div>
+    <div class="legend-item"><span class="legend-key">T</span><span>Temperature</span></div>
+    <div class="legend-item"><span class="legend-key">exp</span><span>자연지수함수 (e<sup>x</sup>)</span></div>
+    <div class="legend-item"><span class="legend-key">P(i)</span><span>i번째 토큰이 선택될 확률</span></div>
+  </div>
+</div>
+
+<!-- sample result -->
+<div class="sample-card">
+  <span class="sample-label">샘플링 결과</span>
+  <div class="sample-result">
+    <span class="sample-token" id="sample-token">—</span>
+    <span class="sample-prob" id="sample-prob"></span>
+  </div>
+  <button class="sample-btn" onclick="doSample()">다시 뽑기 ↺</button>
+</div>
+
+<footer>Ollama + LangChain 과정 · Day 01 · LLM 추론 시각화</footer>
+
+<script>
+  const tokens  = ['고양이', '강아지', '새', '물고기', '토끼'];
+  const logits  = [4.2, 2.8, 1.5, 0.3, -0.9];
+  const COLORS  = ['#6c6fff','#4ecca3','#f0a060','#e06090','#8892aa'];
+
+  const minL = Math.min(...logits);
+  const maxL = Math.max(...logits);
+
+  function logitPct(v) {
+    return ((v - minL) / (maxL - minL)) * 88 + 8;
+  }
+
+  function softmax(arr, T) {
+    const scaled = arr.map(v => v / T);
+    const m = Math.max(...scaled);
+    const exps = scaled.map(v => Math.exp(v - m));
+    const sum = exps.reduce((a,b)=>a+b, 0);
+    return exps.map(v => v / sum);
+  }
+
+  function buildLogitBars() {
+    const el = document.getElementById('logit-bars');
+    el.innerHTML = tokens.map((t, i) => `
+      <div class="bar-row">
+        <div class="bar-token">${t}</div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:${logitPct(logits[i]).toFixed(1)}%;background:${COLORS[i]}22;border-right:2px solid ${COLORS[i]}"></div>
+          <div class="bar-num" style="color:${COLORS[i]}">${logits[i].toFixed(1)}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function updateProbBars(probs) {
+    const maxP = Math.max(...probs);
+    const el = document.getElementById('prob-bars');
+    el.innerHTML = tokens.map((t, i) => {
+      const pct = (probs[i] * 100).toFixed(1);
+      const isTop = probs[i] === maxP;
+      return `
+        <div class="bar-row">
+          <div class="bar-token">${t}</div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${pct}%;background:${COLORS[i]}${isTop?'cc':'44'};border-right:2px solid ${COLORS[i]}${isTop?'':'88'}"></div>
+            <div class="bar-num" style="color:${COLORS[i]};font-weight:${isTop?'500':'400'}">${pct}%</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function getT() { return parseInt(document.getElementById('temp-slider').value) / 10; }
+
+  function getTempHint(T) {
+    if (T < 0.3) return `T = ${T.toFixed(1)} — 극도로 결정적. 항상 최고 확률 토큰을 선택합니다 (Greedy Decoding).`;
+    if (T < 0.8) return `T = ${T.toFixed(1)} — 안정적이고 집중된 분포. 창의성보다 정확도 우선.`;
+    if (T < 1.2) return `T = ${T.toFixed(1)} — 기본값 근처. 학습된 확률을 거의 그대로 반영합니다.`;
+    if (T < 2.5) return `T = ${T.toFixed(1)} — 분포가 넓어집니다. 낮은 확률 토큰도 뽑힐 기회가 생깁니다.`;
+    return `T = ${T.toFixed(1)} — 거의 균등 분포. 어떤 토큰이 나올지 예측하기 어렵습니다.`;
+  }
+
+  function update() {
+    const T = getT();
+    document.getElementById('temp-display').textContent = T.toFixed(1);
+    document.getElementById('temp-hint').textContent = getTempHint(T);
+    const probs = softmax(logits, T);
+    updateProbBars(probs);
+
+    // accent color shifts warm as T rises
+    const hue = Math.round(240 - T * 30);
+    document.getElementById('temp-display').style.color =
+      T < 1.5 ? 'var(--accent)' : T < 2.5 ? 'var(--accent2)' : 'var(--warn)';
+  }
+
+  function doSample() {
+    const T = getT();
+    const probs = softmax(logits, T);
+    let r = Math.random(), cum = 0, chosen = 0;
+    for (let i = 0; i < probs.length; i++) {
+      cum += probs[i];
+      if (r < cum) { chosen = i; break; }
+    }
+    const tok = document.getElementById('sample-token');
+    const prob = document.getElementById('sample-prob');
+    tok.textContent = tokens[chosen];
+    tok.style.color = COLORS[chosen];
+    tok.classList.remove('flash');
+    void tok.offsetWidth;
+    tok.classList.add('flash');
+    prob.textContent = `확률 ${(probs[chosen]*100).toFixed(1)}%`;
+  }
+
+  document.getElementById('temp-slider').addEventListener('input', update);
+
+  buildLogitBars();
+  update();
+  doSample();
+</script>
+</body>
+</html>
